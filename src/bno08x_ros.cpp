@@ -15,17 +15,35 @@ BNO08xROS::BNO08xROS()
     this->init_sensor();
 
     if (publish_imu_) {
-        this->imu_publisher_ = this->create_publisher<sensor_msgs::msg::Imu>("/imu", 10);
+        this->imu_publisher_ = this->create_publisher<sensor_msgs::msg::Imu>("imu/data", 5);
         RCLCPP_INFO(this->get_logger(), "IMU Publisher created");
         RCLCPP_INFO(this->get_logger(), "IMU Rate: %d", imu_rate_);
     }
 
     if (publish_magnetic_field_) {
         mag_publisher_ = this->create_publisher<sensor_msgs::msg::MagneticField>(
-                                                                        "/magnetic_field", 10);
+                                                                        "imu/magnetic_field", 10);
         RCLCPP_INFO(this->get_logger(), "Magnetic Field Publisher created");
         RCLCPP_INFO(this->get_logger(), "Magnetic Field Rate: %d", magnetic_field_rate_);
     }
+
+    // Set IMU message covariances (required by robot_localization EKF)
+    // Zero covariance causes the Kalman gain to collapse and breaks orientation integration
+    this->imu_msg_.orientation_covariance = {
+        0.01, 0.0,  0.0,
+        0.0,  0.01, 0.0,
+        0.0,  0.0,  0.01
+    };
+    this->imu_msg_.angular_velocity_covariance = {
+        0.01, 0.0,  0.0,
+        0.0,  0.01, 0.0,
+        0.0,  0.0,  0.01
+    };
+    this->imu_msg_.linear_acceleration_covariance = {
+        0.1, 0.0, 0.0,
+        0.0, 0.1, 0.0,
+        0.0, 0.0, 0.1
+    };
 
     // Poll the sensor at the rate of the fastest sensor
     this->imu_received_flag_ = 0;
@@ -122,14 +140,14 @@ void BNO08xROS::init_comms() {
 void BNO08xROS::init_parameters() {
     this->declare_parameter<std::string>("frame_id", "bno085");
 
-    this->declare_parameter<bool>("publish.magnetic_field.enabled", true);
+    this->declare_parameter<bool>("publish.magnetic_field.enabled", false);
     this->declare_parameter<int>("publish.magnetic_field.rate", 100);
     this->declare_parameter<bool>("publish.imu.enabled", true);
     this->declare_parameter<int>("publish.imu.rate", 100);
 
     this->declare_parameter<bool>("i2c.enabled", true);
-    this->declare_parameter<std::string>("i2c.bus", "/dev/i2c-7");
-    this->declare_parameter<std::string>("i2c.address", "0x4A");
+    this->declare_parameter<std::string>("i2c.bus", "/dev/i2c-1");
+    this->declare_parameter<std::string>("i2c.address", "0x4b");
     this->declare_parameter<bool>("uart.enabled", false);
     this->declare_parameter<std::string>("uart.device", "/dev/ttyACM0");
     this->declare_parameter<bool>("spi.enabled", false);
@@ -220,7 +238,11 @@ void BNO08xROS::sensor_callback(void *cookie, sh2_SensorValue_t *sensor_value) {
 			this->imu_msg_.orientation.y = sensor_value->un.rotationVector.j;
 			this->imu_msg_.orientation.z = sensor_value->un.rotationVector.k;
 			this->imu_msg_.orientation.w = sensor_value->un.rotationVector.real;
-			imu_received_flag_ |= ROTATION_VECTOR_RECEIVED;
+
+            this->imu_msg_.header.frame_id = this->frame_id_;
+            this->imu_msg_.header.stamp = this->get_clock()->now();
+            this->imu_publisher_->publish(this->imu_msg_);
+			// imu_received_flag_ |= ROTATION_VECTOR_RECEIVED;
 			break;
 		case SH2_ACCELEROMETER:
 			this->imu_msg_.linear_acceleration.x = sensor_value->un.accelerometer.x;
@@ -238,13 +260,13 @@ void BNO08xROS::sensor_callback(void *cookie, sh2_SensorValue_t *sensor_value) {
 			break;
 	}
 
-	if(imu_received_flag_ == (ROTATION_VECTOR_RECEIVED | ACCELEROMETER_RECEIVED | GYROSCOPE_RECEIVED)){
-		this->imu_msg_.header.frame_id = this->frame_id_;
-		this->imu_msg_.header.stamp.sec = this->get_clock()->now().seconds();
-		this->imu_msg_.header.stamp.nanosec = this->get_clock()->now().nanoseconds();
-		this->imu_publisher_->publish(this->imu_msg_);
-		imu_received_flag_ = 0;
-	}
+	// if(imu_received_flag_ == (ROTATION_VECTOR_RECEIVED | ACCELEROMETER_RECEIVED | GYROSCOPE_RECEIVED)){
+	// 	this->imu_msg_.header.frame_id = this->frame_id_;
+	// 	this->imu_msg_.header.stamp.sec = this->get_clock()->now().seconds();
+	// 	this->imu_msg_.header.stamp.nanosec = this->get_clock()->now().nanoseconds();
+	// 	this->imu_publisher_->publish(this->imu_msg_);
+	// 	imu_received_flag_ = 0;
+	// }
 
 }
 
