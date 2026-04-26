@@ -190,7 +190,7 @@ void BNO08xROS::init_sensor() {
         }
     }
     if (publish_imu_) {
-        if(!this->bno08x_->enable_report(SH2_ROTATION_VECTOR, 
+        if(!this->bno08x_->enable_report(SH2_GAME_ROTATION_VECTOR, 
                                          1000000/this->imu_rate_)){              // Hz to us
             RCLCPP_ERROR(this->get_logger(), "Failed to enable rotation vector sensor");
         }
@@ -233,7 +233,7 @@ void BNO08xROS::sensor_callback(void *cookie, sh2_SensorValue_t *sensor_value) {
 				this->mag_publisher_->publish(this->mag_msg_);
 			}
 			break;
-		case SH2_ROTATION_VECTOR:
+		case SH2_GAME_ROTATION_VECTOR:
 			this->imu_msg_.orientation.x = sensor_value->un.rotationVector.i;
 			this->imu_msg_.orientation.y = sensor_value->un.rotationVector.j;
 			this->imu_msg_.orientation.z = sensor_value->un.rotationVector.k;
